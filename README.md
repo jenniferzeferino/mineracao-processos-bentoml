@@ -1,73 +1,74 @@
-# Process Mining in Authentication Logs: Concurrency & Security Analytics
+# Mineração de Processos: Análise de Logs de Autenticação
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![Domain](https://img.shields.io/badge/Domain-Cybersecurity%20%26%20Process%20Mining-orange)
-![License](https://img.shields.io/badge/License-MIT-green)
-
-## Overviews & Business Context
-In modern cloud architectures and identity management systems (IAM), monitoring authentication workflows is critical for both user experience and security. While traditional Market Basket Analysis evaluates event co-occurrence (un-ordered sets), **Process Mining** models execution traces to ensure system events strictly adhere to designed state-machine flows.
-
-This project implements process discovery and sequential association rule mining on an event log of **2,000 authentication sessions**. The objective is to evaluate multi-factor authentication (MFA) funnel conversion and detect security anomalies caused by out-of-order execution or race conditions.
+Projeto de análise de logs de eventos para identificação de padrões de uso e conformidade de fluxo de autenticação (Senha + MFA) utilizando Python.
 
 ---
 
-## Dataset Architecture
-The raw data consists of structured audit logs (`JSONL` format). Each log entry represents a discrete telemetry event with three primary attributes:
+## Evidência de Execução
 
-* `session_id`: Unique identifier of the authentication attempt (Case ID).
-* `evento`: Activity name (`falha_senha`, `senha_aceita`, `desafio_mfa`, `falha_mfa`, `login_sucesso`).
-* `timestamp`: ISO-8601 timestamp used to sequence events chronologically.
+![Resultado da Execução no Terminal](assets/execucao_terminal.png)
 
 ---
 
-## Expected State Machine (Happy Path)
-The baseline authentication workflow requires password verification prior to secondary factor challenges:
+## Resultados da Análise (Entrega da Atividade)
 
-1. **Password Verification:** Zero or more `falha_senha` followed by `senha_aceita`.
-2. **MFA Challenge (Optional):** `desafio_mfa` is triggered **only after** `senha_aceita`.
-3. **Completion:**
-   * **Standard Flow:** `senha_aceita → login_sucesso`
-   * **MFA Flow:** `senha_aceita → desafio_mfa → login_sucesso`
+### Bloco 1. Event Log (`descoberta-0001`)
 
----
-
-## Key Metrics & Formulations
-
-### Sequential Rule Association
-* **Support:** Proportion of total sessions containing the complete sequence:
-  $$\text{Support} = \frac{\text{Sessions matching } (\text{LHS} \rightarrow \text{RHS})}{\text{Total Sessions (2000)}}$$
-
-* **Confidence:** Conditional probability of completing the workflow given the prefix execution:
-  $$\text{Confidence} = \frac{\text{Sessions matching } (\text{LHS} \rightarrow \text{RHS})}{\text{Sessions matching LHS}}$$
+| caso | atividade | instante |
+| :--- | :--- | :--- |
+| `descoberta-0001` | `falha_senha` | `2026-10-01T12:01:01+00:00` |
+| `descoberta-0001` | `falha_senha` | `2026-10-01T12:01:02+00:00` |
+| `descoberta-0001` | `senha_aceita` | `2026-10-01T12:01:03+00:00` |
+| `descoberta-0001` | `desafio_mfa` | `2026-10-01T12:01:04+00:00` |
+| `descoberta-0001` | `login_sucesso` | `2026-10-01T12:01:05+00:00` |
 
 ---
 
-## Analysis & Analytical Findings
+### Bloco 2. Traço versus Cesta (`descoberta-0001`)
 
-### 1. Execution Trace vs. Itemset Analysis
-For session `descoberta-0001`:
-* **Trace (Ordered Sequence):** `falha_senha → falha_senha → senha_aceita → desafio_mfa → login_sucesso`
-* **Itemset (Unordered Set):** `{desafio_mfa, falha_senha, login_sucesso, senha_aceita}`
-
-*Key Takeaway:* While itemsets capture co-occurrence, traces reveal operational loops (e.g., multiple failed password attempts) and causal dependency.
+* **Traço:** `falha_senha → falha_senha → senha_aceita → desafio_mfa → login_sucesso`
+* **Conjunto:** `{desafio_mfa, falha_senha, login_sucesso, senha_aceita}`
 
 ---
 
-### 2. MFA Conversion & Retention
-Evaluated rule: `(senha_aceita → desafio_mfa) → login_sucesso`
+### Bloco 3. Caminho Feliz — Suporte e Confiança
 
-* **Prefix Match Count:** `[Y]` sessions
-* **Full Rule Match Count:** `[X]` sessions
-* **Support:** `[X]/2000`
-* **Confidence:** `[X]/[Y]`
+Regra avaliada: `(senha_aceita → desafio_mfa) → login_sucesso`
 
-**Engineering Insights:**
-* **Support:** Quantifies the global volume of users successfully completing two-factor authentication.
-* **Confidence:** Demonstrates low friction in the MFA challenge stage, measuring user completion rate once secondary verification is prompted.
+* **Sessões em que o prefixo cabe (`senha_aceita → desafio_mfa`):** 900
+* **Sessões em que a regra completa cabe (`senha_aceita → desafio_mfa → login_sucesso`):** 700
+* **Suporte da regra:** `700/2000`
+* **Confiança da regra:** `700/900`
+
+**Interpretação no produto:**
+* **Suporte:** Entre todas as 2.000 tentativas de login analisadas, é um comportamento observado em 700 casos a pessoa aceitar a senha, receber o desafio MFA e concluir a autenticação com sucesso.
+* **Confiança:** Para os usuários que já aceitaram a senha e foram apresentados ao desafio MFA, é frequente que 700 em 900 deles concluam o login com sucesso em vez de abandonar a sessão ou falhar no segundo fator.
 
 ---
 
-### 3. Security Anomaly Detection: Out-of-Order Execution
+### Bloco 4. Ordem no Fluxo (Senha → MFA)
 
-* **Pattern A (Co-occurrence Set `{senha_aceita, desafio_mfa}`):** Support = `[Z]/2000`
-* **Pattern B (Anomalous Trace `desafio_mfa → senha_aceita`):** `[N]` instances
+* **Padrão A — Conjunto `{senha_aceita, desafio_mfa}`**
+  * **Significado:** Tentativas em que a senha foi aceita e o MFA foi pedido, olhando apenas co-ocorrência.
+  * **Suporte:** `900/2000`
+
+* **Padrão B — Sequência `desafio_mfa → senha_aceita`**
+  * **Significado:** Tentativas em que o sistema registrou o pedido de MFA antes da validação da senha aceita (inversão do fluxo previsto).
+  * **Contagem:** `0`
+
+---
+
+## Como Executar o Script
+
+1. Clone este repositório:
+   ```bash
+   git clone [https://github.com/seu-usuario/nome-do-repositorio.git](https://github.com/seu-usuario/nome-do-repositorio.git)
+   ```
+2. Navegue até a pasta do projeto:
+   ```bash
+   cd nome-do-repositorio
+   ```
+3. Execute o script em Python:
+   ```bash
+   python3 analise_logs.py
+   ```
